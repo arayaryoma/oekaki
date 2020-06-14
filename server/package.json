@@ -2,5 +2,16 @@
   "name": "@arayaryoma/oekaki-server",
   "version": "0.0.0",
   "main": "index.js",
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "ws": "^7.3.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^7.2.5",
+    "ts-node": "^8.10.2",
+    "typescript": "^3.9.5"
+  }
 }
