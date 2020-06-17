@@ -6,19 +6,23 @@ const $ = document.querySelector.bind(document);
 const userId = uuid();
 socket.onopen = (event) => {
   console.log("connected to the websocket server");
-  socket.send("hello!!!");
 };
 type MessageData = {
   event: string;
 };
 
-interface DrawedMessageData extends MessageData {
-  event: "drawed";
-  data: {
+type DrawEvent = {
+  type: "started" | "moved" | "finisehd";
+  point: {
     x: number;
     y: number;
   };
-}
+  userId: string;
+};
+
+const sendDrawEvent = (event: DrawEvent) => {
+  socket.send(JSON.stringify(event));
+};
 
 document.addEventListener("DOMContentLoaded", () => {
   const canvas = $("#canvas") as HTMLCanvasElement;
@@ -31,6 +35,7 @@ class CanvasManager {
   private isDrawing = false;
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  private ctxs: { [userId: string]: CanvasRenderingContext2D };
   private canvasRect: DOMRect;
   private mousePoint = { x: 0, y: 0 };
   //   private buttonEl: HTMLButtonElement;
@@ -40,6 +45,7 @@ class CanvasManager {
     this.ctx = this.canvas.getContext("2d")!;
     this.ctx.strokeStyle = "black";
     this.ctx.lineWidth = 4;
+    this.ctxs = { [userId]: this.ctx };
     this.canvasRect = this.canvas.getBoundingClientRect();
   }
 
@@ -49,6 +55,15 @@ class CanvasManager {
       this.isDrawing = true;
       this.ctx.beginPath();
       this.ctx.moveTo(this.mousePoint.x, this.mousePoint.y);
+      const data = {
+        type: "started",
+        point: {
+          x: this.mousePoint.x,
+          y: this.mousePoint.y,
+        },
+        userId,
+      } as const;
+      sendDrawEvent(data);
     });
     this.canvas.addEventListener("mousemove", (ev) => {
       if (this.isDrawing) {
@@ -56,36 +71,68 @@ class CanvasManager {
         this.ctx.lineTo(this.mousePoint.x, this.mousePoint.y);
         this.ctx.stroke();
         const data = {
-          event: "drawed",
+          type: "moved",
           point: {
             x: this.mousePoint.x,
             y: this.mousePoint.y,
           },
           userId,
-        };
-        socket.send(JSON.stringify(data));
+        } as const;
+        sendDrawEvent(data);
       }
     });
     this.canvas.addEventListener("mouseup", (ev) => {
       this.setMousePoint(ev);
       this.isDrawing = false;
+      const data = {
+        type: "finished",
+        point: {
+          x: this.mousePoint.x,
+          y: this.mousePoint.y,
+        },
+        userId,
+      } as const;
     });
     this.canvas.addEventListener("mouseleave", (ev) => {
       this.isDrawing = false;
+      const data = {
+        type: "finished",
+        point: {
+          x: this.mousePoint.x,
+          y: this.mousePoint.y,
+        },
+        userId,
+      } as const;
     });
 
     socket.onmessage = (ev) => {
       try {
-          const json = JSON.parse(ev.data);
-          if(json.event==='drawed' && json.userId !== userId) {
-              const {x, y} = json.point;
-               const ctx = this.canvas.getContext('2d');
-               ctx?.beginPath();
-               ctx?.moveTo(0, 0);
-               ctx?.lineTo(x, y);
-               ctx?.stroke();
-               ctx?.closePath();
+        const json: DrawEvent = JSON.parse(ev.data);
+        if (json.userId !== userId) {
+          const { x, y } = json.point;
+          switch (json.type) {
+            case "started": {
+              const ctx = this.canvas.getContext("2d");
+              Object.assign(this.ctxs, { [json.userId]: ctx });
+              ctx?.beginPath();
+              ctx?.moveTo(x, y);
+              return;
+            }
+            case "moved": {
+              const ctx = this.ctxs[json.userId];
+              ctx?.lineTo(x, y);
+              ctx?.stroke();
+              return;
+            }
+            case "finisehd": {
+              const ctx = this.ctxs[json.userId];
+              ctx?.lineTo(x, y);
+              ctx?.stroke();
+              ctx?.closePath();
+              return;
+            }
           }
+        }
       } catch (e) {
         console.error(e);
       }

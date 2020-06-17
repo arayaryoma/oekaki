@@ -14,10 +14,9 @@ const sockets: WebSocket[] = [];
 server.on("connection", function (socket, req) {
   sockets.push(socket);
   socket.on("message", (data) => {
-    console.log(data);
     try {
       const json = JSON.parse(data.toString());
-      if (json.event === "drawed") {
+      if (json.type && json.userId && json.point) {
         sockets.forEach((s) => s.send(data));
       }
     } catch (e) {}
