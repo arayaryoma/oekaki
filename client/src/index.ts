@@ -1,6 +1,7 @@
 import { v4 as uuid } from "uuid";
 import "./styles/main.css";
-const socket = new WebSocket("ws://localhost:3000");
+// const socket = new WebSocket("ws://localhost:3000");
+const socket = new WebSocket("wss://playground.araya.dev/oekaki/server");
 const $$ = document.querySelectorAll.bind(document);
 const $ = document.querySelector.bind(document);
 const userId = uuid();
@@ -12,15 +13,26 @@ type MessageData = {
 };
 
 type DrawEvent = {
-  type: "started" | "moved" | "finisehd";
+  type: "draw";
+  event: "started" | "moved" | "finished";
   point: {
     x: number;
     y: number;
   };
   userId: string;
 };
+type ClearEvent = {
+  type: "clear";
+};
 
 const sendDrawEvent = (event: DrawEvent) => {
+  socket.send(JSON.stringify(event));
+};
+
+const sendClearEvent = () => {
+  const event: ClearEvent = {
+    type: "clear",
+  };
   socket.send(JSON.stringify(event));
 };
 
@@ -56,7 +68,8 @@ class CanvasManager {
       this.ctx.beginPath();
       this.ctx.moveTo(this.mousePoint.x, this.mousePoint.y);
       const data = {
-        type: "started",
+        type: "draw",
+        event: "started",
         point: {
           x: this.mousePoint.x,
           y: this.mousePoint.y,
@@ -71,7 +84,8 @@ class CanvasManager {
         this.ctx.lineTo(this.mousePoint.x, this.mousePoint.y);
         this.ctx.stroke();
         const data = {
-          type: "moved",
+          type: "draw",
+          event: "moved",
           point: {
             x: this.mousePoint.x,
             y: this.mousePoint.y,
@@ -85,32 +99,36 @@ class CanvasManager {
       this.setMousePoint(ev);
       this.isDrawing = false;
       const data = {
-        type: "finished",
+        type: "draw",
+        event: "finished",
         point: {
           x: this.mousePoint.x,
           y: this.mousePoint.y,
         },
         userId,
       } as const;
+      sendDrawEvent(data);
     });
     this.canvas.addEventListener("mouseleave", (ev) => {
       this.isDrawing = false;
       const data = {
-        type: "finished",
+        type: "draw",
+        event: "finished",
         point: {
           x: this.mousePoint.x,
           y: this.mousePoint.y,
         },
         userId,
       } as const;
+      sendDrawEvent(data);
     });
 
     socket.onmessage = (ev) => {
       try {
-        const json: DrawEvent = JSON.parse(ev.data);
-        if (json.userId !== userId) {
+        const json: DrawEvent | ClearEvent = JSON.parse(ev.data);
+        if (json.type === "draw" && json.userId !== userId) {
           const { x, y } = json.point;
-          switch (json.type) {
+          switch (json.event) {
             case "started": {
               const ctx = this.canvas.getContext("2d");
               Object.assign(this.ctxs, { [json.userId]: ctx });
@@ -124,7 +142,7 @@ class CanvasManager {
               ctx?.stroke();
               return;
             }
-            case "finisehd": {
+            case "finished": {
               const ctx = this.ctxs[json.userId];
               ctx?.lineTo(x, y);
               ctx?.stroke();
@@ -132,14 +150,17 @@ class CanvasManager {
               return;
             }
           }
+        } else if (json.type === "clear") {
+          this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         }
       } catch (e) {
         console.error(e);
       }
     };
-    // this.buttonEl.addEventListener("click", (ev) => {
-    //   this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    // });
+    const clear = $("button#clear");
+    clear?.addEventListener("click", (ev) => {
+      sendClearEvent();
+    });
   }
   private setMousePoint(ev: MouseEvent) {
     this.mousePoint = {
